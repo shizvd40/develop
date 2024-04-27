@@ -1,38 +1,38 @@
-from flask import Flask, render_template, request, redirect, url_for
-import pandas as pd
+from flask import Flask, render_template, request, redirect, url_for, session
+import csv
+import os
 
 app = Flask(__name__)
+app.secret_key = 'your_secret_key'
 
-# Initialize an empty list to store the products
-products = []
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
-    if request.method == 'POST':
-        # Get the uploaded CSV file
-        csv_file = request.files['csv_file']
-        global products
-        products = pd.read_csv(csv_file).to_dict('records')
-        return render_template('product_list.html', products=products)
     return render_template('index.html')
 
-@app.route('/product_list', methods=['GET', 'POST'])
-def product_list():
-    if request.method == 'POST':
-        # Get the search query
-        search_query = request.form['search_query']
-        global products
-        filtered_products = [product for product in products if search_query.lower() in product['name'].lower()]
-        return render_template('product_list.html', products=filtered_products)
-    return render_template('product_list.html', products=products)
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    uploaded_file = request.files['file']
+    if uploaded_file and uploaded_file.filename.endswith('.csv'):
+        session['csv_data'] = uploaded_file.read().decode('utf-8').splitlines()
+        return redirect(url_for('display'))
+    return redirect(url_for('index'))
 
-@app.route('/product/<int:product_id>')
-def product_detail(product_id):
-    global products
-    product = (product for product in products if product['id'] == product_id)
-    if product:
-        return render_template('product_detail.html', product=product)
-    return 'Product not found', 404
+@app.route('/display', methods=['GET', 'POST'])
+def display():
+    lines = sorted(list(set([line[0] for line in list(csv.reader(session.get('csv_data', [])))[1:]])), key=lambda x: int(x))
+    search_query = request.form.get('search', '')
+    if search_query:
+        lines = list(set([str(line[0]) for line in lines if str(search_query) in str(line[0])]))
+    return render_template('display.html', lines=lines, search_query=search_query)
+
+@app.route('/details/<id>')
+def details(id):
+    lines = list(csv.reader(session.get('csv_data', [])))
+    line = next((line for line in lines if line[0] == id), None)
+    if line:
+        return render_template('details.html', line=line)
+    else:
+        return 'Строка с таким ID не найдена', 404
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
